@@ -232,7 +232,9 @@ def import_class(name):
 
 
 if __name__ == '__main__':
+    #返回一个参数解析器
     sparser = utils.get_parser()
+    #对命令行输入的参数进行解析，将解析结果赋值给p变量。
     p = sparser.parse_args()
     # p.config = "baseline_iter.yaml"
     if p.config is not None:

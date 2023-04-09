@@ -25,6 +25,7 @@ from torch.cuda.amp import autocast as autocast
 class Processor():
     def __init__(self, arg):
         self.arg = arg
+        #创建arg.work_dir，如果存在可选择是否覆盖
         if os.path.exists(self.arg.work_dir):
             answer = input('Current dir exists, do you want to remove and refresh it?\n')
             if answer in ['yes','y','ok','1']:
@@ -35,22 +36,35 @@ class Processor():
                 print('Dir Not removed !')
         else:
             os.makedirs(self.arg.work_dir)
+
+        #将当前文件、baseline、tconv、resnet复制到arg.work_dir中
+        # 为了防止出现意外，改了文件，先备份一下    
         shutil.copy2(__file__, self.arg.work_dir)
         shutil.copy2('./configs/baseline.yaml', self.arg.work_dir)
         shutil.copy2('./modules/tconv.py', self.arg.work_dir)
         shutil.copy2('./modules/resnet.py', self.arg.work_dir)
+
+        #创建一个Recorder对象（self.recoder）用于记录训练的状态和性能指标，这个对象是自己定义的
         self.recoder = utils.Recorder(self.arg.work_dir, self.arg.print_log, self.arg.log_interval)
+        #将当前训练的配置参数（self.arg）保存到arg.work_dir中  
         self.save_arg()
+
+        #创建一个随机种子，保证实验的可重复性，这个过程也是自己定义的
         if self.arg.random_fix:
             self.rng = utils.RandomState(seed=self.arg.random_seed)
+        #用于多GPU训练，这个api是自己写的
         self.device = utils.GpuDataParallel()
+        #再次记录训练状态和性能指标
         self.recoder = utils.Recorder(self.arg.work_dir, self.arg.print_log, self.arg.log_interval)
+        #定义数据集、数据加载器、词表(来源于文件)、模型输出类别数
         self.dataset = {}
         self.data_loader = {}
         self.gloss_dict = np.load(self.arg.dataset_info['dict_path'], allow_pickle=True).item()
         self.arg.model_args['num_classes'] = len(self.gloss_dict) + 1
+        #载入模型和优化器，这个加载过程也是自己定义的
         self.model, self.optimizer = self.loading()
 
+    #定义训练、测试过程
     def start(self):
         if self.arg.phase == 'train':
             best_dev = 100.0
@@ -59,6 +73,7 @@ class Processor():
             epoch_time = 0
             self.recoder.print_log('Parameters:\n{}\n'.format(str(vars(self.arg))))
             seq_model_list = []
+            #每个epoch
             for epoch in range(self.arg.optimizer_args['start_epoch'], self.arg.num_epoch):
                 save_model = epoch % self.arg.save_interval == 0
                 eval_model = epoch % self.arg.eval_interval == 0
@@ -231,27 +246,42 @@ def import_class(name):
     return mod
 
 
+#解析命令行参数，导入配置，开始训练
 if __name__ == '__main__':
     #返回一个参数解析器
+    #参数解释器就是当命令行输入如 --device 0，解释器就会解析并执行该命令
+    #可以点进去看一看解析所执行的代码
     sparser = utils.get_parser()
-    #对命令行输入的参数进行解析，将解析结果赋值给p变量。
+    #对命令行输入的参数进行解析，将解析结果赋值给p变量
     p = sparser.parse_args()
+    #sparser中默认配置文件在configs/baseline_iter.yaml
     # p.config = "baseline_iter.yaml"
+    #如果p中config参数有指定，那么打开相应的配置文件，并读取其中的配置信息
+    #否则就加载configs/baseline_iter.yaml配置文件
     if p.config is not None:
         with open(p.config, 'r') as f:
             try:
+                #使用yaml模块解析读取的配置信息，将其赋值给default_arg变量
                 default_arg = yaml.load(f, Loader=yaml.FullLoader)
             except AttributeError:
                 default_arg = yaml.load(f)
+        #指定脚本中是否有不该存在的参数，有，报错终止
         key = vars(p).keys()
         for k in default_arg.keys():
             if k not in key:
                 print('WRONG ARG: {}'.format(k))
                 assert (k in key)
+        #将读取到的配置，设置为解析器默认值
         sparser.set_defaults(**default_arg)
+    #解析器加载配置，将结果返回args
     args = sparser.parse_args()
+    #打开args中的一个配置信息文件，用yaml解析并将结果传给args.dataset_info
     with open(f"./configs/{args.dataset}.yaml", 'r') as f:
         args.dataset_info = yaml.load(f, Loader=yaml.FullLoader)
+    
+    #ai 初始化的一些工作
     processor = Processor(args)
+    #备份一份
     utils.pack_code("./", args.work_dir)
+    #开始训练
     processor.start()

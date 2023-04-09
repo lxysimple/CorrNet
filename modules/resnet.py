@@ -30,18 +30,30 @@ class Get_Correlation(nn.Module):
         self.conv_back = nn.Conv3d(reduction_channel, channels, kernel_size=1, bias=False)
 
     def forward(self, x):
-
+        #x:(2,128,208,28,28),(bs,c,t,w,h),t×w×h构成了一个三维空间
+        #在时间、空间维度进行下采样，(batch size, channels, time/2, width/2, height/2)
         x2 = self.down_conv2(x)
+        #torch.einsum是一个高级的张量操作函数，给定两个张量的形状，可以求出最终张量形状
+        #这两个张量都是在 x2 的基础上计算出来的，用于表示不同时间步之间的空间关系
+        #affinities 表示当前帧和下一帧之间的空间关系，而 affinities2 表示当前帧和上一帧之间的空间关系
         affinities = torch.einsum('bcthw,bctsd->bthwsd', x, torch.concat([x2[:,:,1:], x2[:,:,-1:]], 2))  # repeat the last frame
         affinities2 = torch.einsum('bcthw,bctsd->bthwsd', x, torch.concat([x2[:,:,:1], x2[:,:,:-1]], 2))  # repeat the first frame 
+        
+        #features 是根据 affinities 和 affinities2 计算出来的，用于表示不同时间步之间的特征变化
+        #features 是通过在 x2 的基础上进行加权求和得到的
         features = torch.einsum('bctsd,bthwsd->bcthw', torch.concat([x2[:,:,1:], x2[:,:,-1:]], 2), F.sigmoid(affinities)-0.5 )* self.weights2[0] + \
             torch.einsum('bctsd,bthwsd->bcthw', torch.concat([x2[:,:,:1], x2[:,:,:-1]], 2), F.sigmoid(affinities2)-0.5 ) * self.weights2[1] 
 
+        #应该是对x在时间、空间上进行下采样
         x = self.down_conv(x)
+
+        #spatial_aggregation1~3：提取x中的空间信息，转化为更高维度的特征表示
+        #就是1提取细节特征，2提取正常特征，3提取全貌特征，最后合并再上采样回来，就是论文中那个图
         aggregated_x = self.spatial_aggregation1(x)*self.weights[0] + self.spatial_aggregation2(x)*self.weights[1] \
                     + self.spatial_aggregation3(x)*self.weights[2]
         aggregated_x = self.conv_back(aggregated_x)
 
+        
         return features * (F.sigmoid(aggregated_x)-0.5)
         
 

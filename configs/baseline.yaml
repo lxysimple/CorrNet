@@ -7,7 +7,8 @@ work_dir: ./work_dir/baseline_res18/
 batch_size: 2
 random_seed: 0
 test_batch_size: 2
-num_worker: 10
+#要用htop查看自己cpu支持的最大线程，用10线程将数据从cpu转到gpu
+num_worker: 10 
 device: 0,1
 log_interval: 10000
 eval_interval: 1

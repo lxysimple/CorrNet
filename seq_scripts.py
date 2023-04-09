@@ -17,13 +17,16 @@ def seq_train(loader, model, optimizer, device, epoch_idx, recoder):
     loss_value = []
     clr = [group['lr'] for group in optimizer.optimizer.param_groups]
     scaler = GradScaler()
+    #每个batchsize执行代码
     for batch_idx, data in enumerate(tqdm(loader)):
+        #(2, 208, 3, 224, 224)，2是batchsize，208是帧
         vid = device.data_to_device(data[0])
-        vid_lgt = device.data_to_device(data[1])
-        label = device.data_to_device(data[2])
-        label_lgt = device.data_to_device(data[3])
+        vid_lgt = device.data_to_device(data[1])    #vid_lgt=video_length，长度，就是几个样本
+        label = device.data_to_device(data[2])  #(30)，是30个手语
+        label_lgt = device.data_to_device(data[3])  #(2)，即2个样本的标签
         optimizer.zero_grad()
         with autocast():
+            #核心代码！
             ret_dict = model(vid, vid_lgt, label=label, label_lgt=label_lgt)
             loss = model.criterion_calculation(ret_dict, label, label_lgt)
         if np.isinf(loss.item()) or np.isnan(loss.item()):

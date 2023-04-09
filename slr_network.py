@@ -79,6 +79,7 @@ class SLRModel(nn.Module):
         return x
 
     def forward(self, x, len_x, label=None, label_lgt=None):
+        #x:(2,208,3,224,224)
         if len(x.shape) == 5:
             # videos
             batch, temp, channel, height, width = x.shape
